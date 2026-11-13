@@ -17,8 +17,11 @@ import com.puretv.store.data.ServerState
 import com.puretv.store.data.StoreApp
 import com.puretv.store.data.StoreConfigParser
 import com.puretv.store.data.StoreRepository
+import com.puretv.store.data.StoreUpdate
+import com.puretv.store.data.StoreUpdater
 import com.puretv.store.data.VersionNames
 import com.puretv.store.data.WebServerService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -49,7 +52,22 @@ data class StoreRow(
     val message: String? = null,
 )
 
+data class UpdateUiState(
+    val currentVersion: String = "",
+    val checking: Boolean = false,
+    val available: StoreUpdate? = null,
+    val downloading: Boolean = false,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val error: String? = null,
+    val message: String? = null,
+) {
+    val progress: Float? get() = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else null
+}
+
 data class StoreUiState(
+    val versionName: String = "",
+    val update: UpdateUiState = UpdateUiState(),
     val loading: Boolean = false,
     val rows: List<StoreRow> = emptyList(),
     val error: String? = null,
@@ -63,11 +81,14 @@ data class StoreUiState(
 class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = StoreRepository(application)
+    private val updater = StoreUpdater(application)
     private val _state = MutableStateFlow(StoreUiState())
     val state: StateFlow<StoreUiState> = _state.asStateFlow()
 
     private var refreshJob: Job? = null
+    private var updateJob: Job? = null
     private val installJobs = mutableMapOf<String, Job>()
+    private val installTimeouts = mutableMapOf<String, Job>()
 
     init {
         viewModelScope.launch {
@@ -86,6 +107,116 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
         }
         refreshPermissions()
         refresh()
+        val installedVersion = updater.currentVersionName()
+        _state.update {
+            it.copy(
+                versionName = installedVersion,
+                update = it.update.copy(currentVersion = installedVersion),
+            )
+        }
+        checkForUpdate(manual = false)
+    }
+
+    fun checkForUpdate(manual: Boolean) {
+        if (_state.value.update.checking || _state.value.update.downloading) return
+        updateJob?.cancel()
+        updateJob = viewModelScope.launch {
+            _state.update {
+                it.copy(update = it.update.copy(checking = true, error = null, message = null))
+            }
+            try {
+                val update = updater.findUpdate()
+                _state.update { current ->
+                    current.copy(
+                        update = current.update.copy(
+                            checking = false,
+                            available = update,
+                            message = if (update == null && manual) "已是最新版本" else null,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                _state.update { current ->
+                    current.copy(
+                        update = current.update.copy(
+                            checking = false,
+                            error = if (manual) friendly(t) else null,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun downloadUpdate() {
+        val update = _state.value.update.available ?: return
+        if (_state.value.update.downloading) return
+        updateJob?.cancel()
+        updateJob = viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    update = it.update.copy(
+                        downloading = true,
+                        downloadedBytes = 0L,
+                        totalBytes = 0L,
+                        error = null,
+                    ),
+                )
+            }
+            try {
+                val file = updater.download(update) { done, total ->
+                    _state.update { current ->
+                        current.copy(
+                            update = current.update.copy(
+                                downloadedBytes = done,
+                                totalBytes = total,
+                            ),
+                        )
+                    }
+                }
+                when (val result = ApkInstaller.installWithSystemUi(getApplication(), file)) {
+                    ApkInstaller.Result.Started -> _state.update {
+                        it.copy(
+                            update = it.update.copy(
+                                downloading = false,
+                                available = null,
+                                message = null,
+                            ),
+                        )
+                    }
+                    ApkInstaller.Result.NeedsPermission -> _state.update {
+                        it.copy(
+                            canInstall = false,
+                            update = it.update.copy(
+                                downloading = false,
+                                error = "需要先允许安装未知应用",
+                            ),
+                        )
+                    }
+                    is ApkInstaller.Result.Failed -> _state.update {
+                        it.copy(
+                            update = it.update.copy(
+                                downloading = false,
+                                error = result.message,
+                            ),
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                _state.update {
+                    it.copy(update = it.update.copy(downloading = false, error = friendly(t)))
+                }
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        updateJob?.cancel()
+        _state.update { it.copy(update = UpdateUiState()) }
     }
 
     fun refresh() {
@@ -164,19 +295,16 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                     updateRow(appId) { it.copy(progress = fraction) }
                 }
                 validateApk(target, row)
-                val info = context.packageManager.getPackageArchiveInfo(target.absolutePath, 0)
-                    ?: throw IOException("无法读取下载的安装包")
-                val label = info.applicationInfo
-                    ?.let { context.packageManager.getApplicationLabel(it).toString() }
-                    ?: row.app.name
-
-                when (val result = ApkInstaller.install(context, target, label, row.app.packageName)) {
-                    ApkInstaller.Result.Started -> updateRow(appId) {
-                        it.copy(
-                            status = RowStatus.INSTALLING,
-                            progress = null,
-                            message = "请在电视上确认安装",
-                        )
+                when (val result = ApkInstaller.installWithSystemUi(context, target)) {
+                    ApkInstaller.Result.Started -> {
+                        updateRow(appId) {
+                            it.copy(
+                                status = RowStatus.INSTALLING,
+                                progress = null,
+                                message = "请在电视上确认安装",
+                            )
+                        }
+                        watchInstallTimeout(appId)
                     }
                     ApkInstaller.Result.NeedsPermission -> {
                         _state.update { it.copy(canInstall = false) }
@@ -192,6 +320,50 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                 target.delete()
                 updateRow(appId) {
                     it.copy(status = RowStatus.ERROR, progress = null, message = friendly(t))
+                }
+            }
+        }
+    }
+
+    /** Called when the store regains focus, e.g. after the system installer closes. */
+    fun refreshInstalled() {
+        if (_state.value.rows.isEmpty()) return
+        viewModelScope.launch {
+            val rows = _state.value.rows.map { row ->
+                val installed = withContext(Dispatchers.IO) {
+                    InstalledApps.versionName(getApplication(), row.app.packageName)
+                }
+                when {
+                    installed != null -> row.copy(
+                        installedVersion = installed,
+                        status = RowStatus.UP_TO_DATE,
+                        progress = null,
+                        message = "安装完成",
+                    )
+                    row.status == RowStatus.INSTALLING -> row.copy(
+                        status = RowStatus.IDLE,
+                        progress = null,
+                        message = "安装未完成，可重试",
+                    )
+                    else -> row
+                }
+            }
+            _state.update { it.copy(rows = rows) }
+        }
+    }
+
+    private fun watchInstallTimeout(appId: String) {
+        installTimeouts.remove(appId)?.cancel()
+        installTimeouts[appId] = viewModelScope.launch {
+            delay(90_000)
+            val row = _state.value.rows.firstOrNull { it.app.id == appId } ?: return@launch
+            if (row.status == RowStatus.INSTALLING) {
+                updateRow(appId) {
+                    it.copy(
+                        status = RowStatus.ERROR,
+                        progress = null,
+                        message = "没有收到电视的安装确认，请重试",
+                    )
                 }
             }
         }
@@ -213,6 +385,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun handleInstallResult(result: InstallCenter.InstallResult) {
         val row = _state.value.rows.firstOrNull { it.app.packageName == result.packageName } ?: return
+        installTimeouts.remove(row.app.id)?.cancel()
         if (result.success) {
             viewModelScope.launch {
                 delay(1_500)

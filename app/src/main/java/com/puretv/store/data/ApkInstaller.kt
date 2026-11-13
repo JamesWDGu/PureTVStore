@@ -6,9 +6,11 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.IntentCompat
 import com.puretv.store.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.core.content.FileProvider
 import java.io.File
 
 /**
@@ -73,6 +75,39 @@ object ApkInstaller {
         }
     }
 
+    /**
+     * Hands the APK to the system installer through FileProvider. The store UI uses
+     * this foreground path because some TVs block confirmation activities started
+     * from a PackageInstaller status broadcast.
+     */
+    fun installWithSystemUi(context: Context, apk: File): Result {
+        if (!canInstall(context)) return Result.NeedsPermission
+        if (!apk.isFile || apk.length() == 0L) return Result.Failed("安装包不存在或为空")
+        return try {
+            val directory = File(context.cacheDir, "install").apply { mkdirs() }
+            directory.listFiles()?.forEach { it.delete() }
+            val target = File(directory, apk.name)
+            apk.copyTo(target, overwrite = true)
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                target,
+            )
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_ACTIVITY_NEW_TASK,
+                    )
+                },
+            )
+            Result.Started
+        } catch (t: Throwable) {
+            Result.Failed(t.message ?: "无法打开系统安装界面")
+        }
+    }
+
     fun permissionIntent(context: Context): Intent =
         Intent(
             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -92,38 +127,24 @@ object InstallCenter {
     )
 
     val results = MutableStateFlow<InstallResult?>(null)
-}
 
-class InstallResultReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
+    /** Applies the final status broadcast and notifies the store UI. */
+    fun complete(context: Context, intent: Intent, fallbackMessage: String? = null) {
         val status = intent.getIntExtra(
             PackageInstaller.EXTRA_STATUS,
             PackageInstaller.STATUS_FAILURE,
         )
-        val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        val systemMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
         val packageName = intent.getStringExtra(ApkInstaller.EXTRA_PACKAGE)
         val label = intent.getStringExtra(ApkInstaller.EXTRA_LABEL) ?: "应用"
-
-        // -1 asks the installer UI to show the system confirmation dialog; the
-        // final success/failure arrives in a second broadcast after the user acts.
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
-                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                ?.let { confirm ->
-                    runCatching { context.startActivity(confirm) }
-                }
-            return
-        }
-
         val success = status == PackageInstaller.STATUS_SUCCESS
-
-        InstallCenter.results.value = InstallCenter.InstallResult(
+        results.value = InstallResult(
             packageName = packageName,
             label = label,
             success = success,
-            message = message,
+            message = if (success) null else fallbackMessage ?: systemMessage,
         )
-        Notifications.showInstallResult(context, label, success, message)
+        Notifications.showInstallResult(context, label, success, systemMessage)
         if (success) {
             runCatching {
                 context.startActivity(
@@ -131,6 +152,40 @@ class InstallResultReceiver : BroadcastReceiver() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
             }
+        }
+    }
+}
+
+/** Receives PackageInstaller status and shows the system confirmation dialog. */
+class InstallResultReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        try {
+            val status = intent.getIntExtra(
+                PackageInstaller.EXTRA_STATUS,
+                PackageInstaller.STATUS_FAILURE,
+            )
+            if (status != PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                InstallCenter.complete(context, intent)
+                return
+            }
+            val confirm = IntentCompat.getParcelableExtra(
+                intent,
+                Intent.EXTRA_INTENT,
+                Intent::class.java,
+            )
+            if (confirm == null) {
+                InstallCenter.complete(context, intent, "电视没有返回安装确认界面")
+                return
+            }
+            confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(confirm)
+            } catch (t: Throwable) {
+                Log.w("PureTVStore", "无法打开系统安装确认界面", t)
+                InstallCenter.complete(context, intent, "电视上没有可用的安装界面")
+            }
+        } catch (t: Throwable) {
+            Log.w("PureTVStore", "处理安装状态失败", t)
         }
     }
 }

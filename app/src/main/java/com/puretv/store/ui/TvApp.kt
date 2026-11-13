@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.puretv.store.ui.screens.FileShareScreen
+import com.puretv.store.ui.screens.StoreUpdateDialog
 import com.puretv.store.ui.screens.StoreScreen
 
 @Composable
@@ -44,6 +45,7 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.refreshPermissions()
+        viewModel.refreshInstalled()
     }
 
     Box(
@@ -68,7 +70,10 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
                 tab = tab,
                 onTab = { tab = it },
                 loading = state.loading,
+                checkingUpdate = state.update.checking,
+                versionName = state.versionName,
                 onRefresh = viewModel::refresh,
+                onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
             )
             Spacer(Modifier.height(20.dp))
             if (tab == 0) {
@@ -88,6 +93,12 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
             }
         }
     }
+
+    StoreUpdateDialog(
+        state = state.update,
+        onDownload = viewModel::downloadUpdate,
+        onDismiss = viewModel::dismissUpdate,
+    )
 }
 
 @Composable
@@ -95,7 +106,10 @@ private fun Header(
     tab: Int,
     onTab: (Int) -> Unit,
     loading: Boolean,
+    checkingUpdate: Boolean,
+    versionName: String,
     onRefresh: () -> Unit,
+    onCheckUpdate: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column {
@@ -106,7 +120,7 @@ private fun Header(
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Text(
-                text = "安装开源电视应用 · 网页传文件",
+                text = "版本 $versionName · 安装开源电视应用 · 网页传文件",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -116,6 +130,13 @@ private fun Header(
         Spacer(Modifier.width(10.dp))
         TabChip("网页传文件", selected = tab == 1) { onTab(1) }
         Spacer(Modifier.width(20.dp))
+        FocusButton(
+            text = if (checkingUpdate) "检查中…" else "检查更新",
+            onClick = onCheckUpdate,
+            enabled = !checkingUpdate,
+            tonal = true,
+        )
+        Spacer(Modifier.width(10.dp))
         FocusButton(
             text = if (loading) "刷新中…" else "刷新",
             onClick = onRefresh,

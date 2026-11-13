@@ -39,7 +39,8 @@
 |`data/GitHubClient.kt`|GitHub Release API、重定向下载与进度|
 |`data/StoreRepository.kt`|清单读取（网络 → 缓存 → 内置）、Release 5 分钟缓存、下载|
 |`data/InstalledApps.kt`|读取已安装应用的版本名/版本号|
-|`data/ApkInstaller.kt`|PackageInstaller 会话、安装结果广播、安装权限入口|
+|`data/StoreUpdater.kt`|商店自身更新检查（API → Atom 回退）、下载与版本解析|
+|`data/ApkInstaller.kt`|安装会话（网页上传）、FileProvider 直接安装（商店行）、安装权限入口|
 |`data/Notifications.kt`|网页服务与安装结果通知|
 |`data/FileAccess.kt`|授权根目录、文件列表、上传、重命名、删除、新建目录|
 |`data/NetworkAddress.kt`|本机局域网 IPv4 地址|
@@ -50,6 +51,7 @@
 |`ui/TvComponents.kt`|电视焦点按钮与焦点边框|
 |`ui/screens/StoreScreen.kt`|商店卡片列表|
 |`ui/screens/FileShareScreen.kt`|网页服务地址、开关与权限入口|
+|`ui/screens/StoreUpdateDialog.kt`|发现新版本/下载进度/失败提示弹窗|
 |`assets/web/index.html`|电脑浏览器页面（原生 JS，无外部依赖）|
 |`assets/store-apps.json`|断网时的内置清单，与 `store/apps.json` 同步|
 
@@ -66,19 +68,33 @@
    已装版本从 `PackageManager` 读取，用版本名比较决定“已是最新/可安装”。
 4. 点击安装 → 下载到 `cacheDir/store/<id>-<version>.apk` → 校验包名与 `versionCode` 大于已装
    → `ApkInstaller.install()` 写 PackageInstaller 会话并提交。
-5. 安装结果 → `InstallResultReceiver`：`STATUS_PENDING_USER_ACTION` 时启动系统确认界面；
-   最终状态写入 `InstallCenter.results`，商店行更新，并发通知。
+5. 商店行安装 → `ApkInstaller.installWithSystemUi()`：复制到 `cache/install/`，经 FileProvider
+   以 `ACTION_VIEW` 直接交给系统安装器，由前台应用发起，不依赖安装状态广播；用户返回商店后
+   `refreshInstalled()` 用 PackageManager 刷新结果，行停在 `INSTALLING` 超过 90 秒提示重试。
+   网页上传 APK → PackageInstaller 会话，`InstallResultReceiver` 收到
+   `STATUS_PENDING_USER_ACTION` 时启动系统确认界面；最终状态经 `InstallCenter.complete()`
+   写入 `InstallCenter.results` 并通知。
 6. 网页上传 APK → `WebServer.uploadResponse` 保存文件 → 若扩展名为 `.apk` 立即调用
    `ApkInstaller.install()`，响应返回 `started`/`needs_permission`/`failed`。
-7. 文件管理 API 全部经 `FileAccess.resolve()` 规范化路径，只允许在授权根目录内操作。
+7. 商店自身更新 → `StoreUpdater.findUpdate()`：先请求 Release API，403/429/解析失败时回退
+   `https://github.com/JamesWDGu/PureTVStore/releases.atom`，按 `PureTVStore-<版本>.apk`
+   构造下载地址；`downloadUpdate()` 写入 `cacheDir/updates/` 后经
+   `ApkInstaller.installWithSystemUi()` 交给系统安装器。启动时静默检查，手动检查才显示
+   “已是最新版本/检查失败”。
+8. 文件管理 API 全部经 `FileAccess.resolve()` 规范化路径，只允许在授权根目录内操作。
 
 ## 5. 必须保持的不变量
 
 - **安装必须经系统确认**：只能使用 PackageInstaller + 系统安装界面；不得使用 root、静默安装、
   `pm install` 或绕过用户确认。
-- PackageInstaller 的状态接收 PendingIntent 必须使用 `FLAG_MUTABLE`；处理
-  `STATUS_PENDING_USER_ACTION` 并启动 `Intent.EXTRA_INTENT` 中的确认界面。
+- 商店行安装必须走 `ApkInstaller.installWithSystemUi()`（FileProvider + `ACTION_VIEW`），
+  不得改成“提交会话后等待确认”：部分电视会拦截状态广播里启动的界面，表现为永远停在
+  “等待确认”。网页上传保留 PackageInstaller 会话与 `InstallResultReceiver`，其状态
+  PendingIntent 必须为 `FLAG_MUTABLE`，并处理 `STATUS_PENDING_USER_ACTION`。
+- 安装行停在 `INSTALLING` 超过 90 秒时必须提示“没有收到电视的安装确认，请重试”。
 - 安装前校验 APK 的包名与 `versionCode`，避免把其他应用或旧版本装到同一包名上。
+- 商店自身更新只允许来自 `JamesWDGu/PureTVStore` 的 Release；先 API 后 Atom，两者都失败
+  才提示错误；不得静默安装或后台自动安装，必须经系统安装器确认。
 - 清单只能来自 `store/apps.json`、上次成功缓存或内置资产；不要从用户输入拼 URL。
 - 包名进入 `PackageManager` 前必须通过包名正则校验；仓库名必须符合 `owner/repo`。
 - 版本比较按数字段，不得用字符串排序；缺少已装版本视为可安装。

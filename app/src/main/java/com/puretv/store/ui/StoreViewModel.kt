@@ -118,7 +118,11 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                 message = friendly(t),
             )
         }
-        val assetName = StoreConfigParser.selectAsset(release.assets.map { it.name }, app.assetPattern)
+        val assetName = StoreConfigParser.selectAsset(
+            names = release.assets.map { it.name },
+            pattern = app.assetPattern,
+            supportedAbis = Build.SUPPORTED_ABIS.toList(),
+        )
         val asset = release.assets.firstOrNull { it.name == assetName }
         if (asset == null) {
             return StoreRow(
@@ -126,7 +130,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                 release = release,
                 installedVersion = installedVersion,
                 status = RowStatus.ERROR,
-                message = "发布中没有匹配的安装包",
+                message = "发布中没有适合本机架构的安装包",
             )
         }
         val upToDate = !VersionNames.isNewer(release.versionName, installedVersion)

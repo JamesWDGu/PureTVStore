@@ -13,6 +13,29 @@ data class StoreApp(
 
 class StoreConfigException(message: String) : Exception(message)
 
+enum class AbiArch { ARM64, ARMV7, X86_64, X86 }
+
+/** Maps Android ABI names and common asset suffixes such as `arm64-v8a` or `armv7`. */
+private val archAliases = listOf(
+    AbiArch.X86_64 to listOf("x86_64", "x86-64", "amd64"),
+    AbiArch.ARM64 to listOf("arm64-v8a", "arm64", "aarch64", "armv8", "v8a"),
+    AbiArch.ARMV7 to listOf("armeabi-v7a", "armeabi", "armv7a", "armv7", "arm32"),
+    AbiArch.X86 to listOf("x86", "i386", "i686"),
+)
+
+internal fun archOfAsset(name: String): AbiArch? {
+    val lower = name.lowercase()
+    return archAliases.firstOrNull { (_, aliases) -> aliases.any { lower.contains(it) } }?.first
+}
+
+internal fun archOfAbi(abi: String): AbiArch? = when (abi.trim().lowercase()) {
+    "arm64-v8a", "arm64", "aarch64" -> AbiArch.ARM64
+    "armeabi-v7a", "armeabi", "armv7", "armv7a" -> AbiArch.ARMV7
+    "x86_64", "x86-64", "amd64" -> AbiArch.X86_64
+    "x86", "i386", "i686" -> AbiArch.X86
+    else -> null
+}
+
 /**
  * Parses `store/apps.json` from the PureTVStore repository.
  * The file is the only supported way to add apps; keep the schema documented in AGENTS.md.
@@ -64,15 +87,34 @@ object StoreConfigParser {
         return apps
     }
 
-    /** Full-name match wins; a partial match is accepted as a fallback. */
-    fun selectAsset(names: List<String>, pattern: String): String? {
+    /**
+     * Full-name match wins; a partial match is accepted as a fallback.
+     * When [supportedAbis] is non-empty and the release has arch-specific APKs, the first
+     * compatible architecture wins; otherwise a universal (unlabelled) APK is used.
+     * Returns null when every matching APK targets an incompatible architecture.
+     */
+    fun selectAsset(
+        names: List<String>,
+        pattern: String,
+        supportedAbis: List<String> = emptyList(),
+    ): String? {
         val regex = try {
             Regex(pattern, RegexOption.IGNORE_CASE)
         } catch (_: Exception) {
             return null
         }
-        return names.firstOrNull { regex.matches(it) }
-            ?: names.firstOrNull { regex.containsMatchIn(it) }
+        val matched = names.filter { regex.matches(it) }
+            .ifEmpty { names.filter { regex.containsMatchIn(it) } }
+        if (matched.isEmpty()) return null
+        if (supportedAbis.isEmpty() || matched.none { archOfAsset(it) != null }) {
+            return matched.first()
+        }
+        val byArch = matched.groupBy { archOfAsset(it) }
+        for (abi in supportedAbis) {
+            val arch = archOfAbi(abi) ?: continue
+            byArch[arch]?.firstOrNull()?.let { return it }
+        }
+        return matched.firstOrNull { archOfAsset(it) == null }
     }
 }
 

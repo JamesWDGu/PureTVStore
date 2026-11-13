@@ -60,6 +60,9 @@
 2. 商店页 → `StoreViewModel.refresh()` → `StoreRepository.loadApps()`：
    读取远端清单成功则写 `store_cache`；失败用缓存；再失败用内置清单。
 3. 每个应用 → `GitHubClient.latestRelease(repo)`（5 分钟内存缓存）→ `selectAsset()` 选 APK；
+   `selectAsset` 先按 `assetPattern` 过滤，再用 `Build.SUPPORTED_ABIS` 优先选择架构匹配的包
+   （别名：arm64-v8a/arm64/aarch64/v8a、armeabi-v7a/armeabi/armv7、x86_64/amd64、x86/i386），
+   没有匹配时回退 universal，全部不兼容则显示“没有适合本机架构的安装包”；
    已装版本从 `PackageManager` 读取，用版本名比较决定“已是最新/可安装”。
 4. 点击安装 → 下载到 `cacheDir/store/<id>-<version>.apk` → 校验包名与 `versionCode` 大于已装
    → `ApkInstaller.install()` 写 PackageInstaller 会话并提交。

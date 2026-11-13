@@ -71,6 +71,9 @@
 - `packageName` 用于判断是否已安装以及版本高低。
 - `repo` 是 GitHub 仓库，必须发布正式 Release。
 - `assetPattern` 是从 Release 附件中挑选 APK 的正则；省略时选择第一个 `.apk`。
+- 同一个 Release 有多个架构安装包时，会按电视 CPU 自动选择：优先 `arm64-v8a`（64 位 ARM）、
+  `armeabi-v7a`（32 位 ARM）、`x86_64`、`x86`，只有没有匹配架构时才使用 universal/通用包；
+  没有可用包会在应用行显示原因。
 - 如果电视暂时读不到清单，会使用上次成功读取的清单；再失败则使用应用内置的清单。
 
 ## 环境要求

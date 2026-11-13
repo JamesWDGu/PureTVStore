@@ -1,6 +1,7 @@
 package com.puretv.store.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -86,4 +87,84 @@ class StoreConfigParserTest {
 
         assertEquals("SmartTube_stable_32.71_universal.apk", selected)
     }
+
+    @Test
+    fun `prefers arm64 build on a 64-bit device`() {
+        val names = listOf(
+            "SmartTube_stable_32.71_universal.apk",
+            "SmartTube_stable_32.71_armeabi-v7a.apk",
+            "SmartTube_stable_32.71_arm64-v8a.apk",
+        )
+
+        val selected = StoreConfigParser.selectAsset(
+            names,
+            smartTubePattern,
+            listOf("arm64-v8a", "armeabi-v7a"),
+        )
+
+        assertEquals("SmartTube_stable_32.71_arm64-v8a.apk", selected)
+    }
+
+    @Test
+    fun `prefers 32-bit arm build on an armv7 device`() {
+        val names = listOf(
+            "SmartTube_stable_32.71_universal.apk",
+            "SmartTube_stable_32.71_arm64-v8a.apk",
+            "SmartTube_stable_32.71_armeabi-v7a.apk",
+        )
+
+        val selected = StoreConfigParser.selectAsset(
+            names,
+            smartTubePattern,
+            listOf("armeabi-v7a", "armeabi"),
+        )
+
+        assertEquals("SmartTube_stable_32.71_armeabi-v7a.apk", selected)
+    }
+
+    @Test
+    fun `falls back to universal when no build matches the device`() {
+        val names = listOf(
+            "SmartTube_stable_32.71_arm64-v8a.apk",
+            "SmartTube_stable_32.71_universal.apk",
+        )
+
+        val selected = StoreConfigParser.selectAsset(
+            names,
+            smartTubePattern,
+            listOf("armeabi-v7a"),
+        )
+
+        assertEquals("SmartTube_stable_32.71_universal.apk", selected)
+    }
+
+    @Test
+    fun `returns null when only an incompatible architecture is published`() {
+        val selected = StoreConfigParser.selectAsset(
+            listOf("SmartTube_stable_32.71_arm64-v8a.apk"),
+            smartTubePattern,
+            listOf("armeabi-v7a"),
+        )
+
+        assertNull(selected)
+    }
+
+    @Test
+    fun `keeps first match when release has no architecture suffix`() {
+        val names = listOf(
+            "hongguo-tv-0.2.170.apk",
+            "hongguo-tv-mpv-0.2.170.apk",
+        )
+
+        val selected = StoreConfigParser.selectAsset(
+            names,
+            "^hongguo-tv-[0-9].*\\.apk$",
+            listOf("arm64-v8a"),
+        )
+
+        assertEquals("hongguo-tv-0.2.170.apk", selected)
+    }
+
+    private val smartTubePattern =
+        "^SmartTube_stable_.*_(universal|arm64-v8a|armeabi-v7a|x86_64|x86)\\.apk$"
 }

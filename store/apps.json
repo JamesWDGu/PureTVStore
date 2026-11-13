@@ -1,0 +1,20 @@
+{
+  "apps": [
+    {
+      "id": "hongguo",
+      "name": "红果短剧",
+      "packageName": "rocks.aston.hongguotv",
+      "repo": "aston314/hongguo-tv-releases",
+      "description": "红果短剧电视版，提供短剧内容。",
+      "assetPattern": "^hongguo-tv-[0-9].*\\.apk$"
+    },
+    {
+      "id": "smarttube",
+      "name": "SmartTube",
+      "packageName": "org.smarttube.stable",
+      "repo": "yuliskov/SmartTube",
+      "description": "为电视设计的 YouTube 客户端，支持高帧率与无广告播放。",
+      "assetPattern": "^SmartTube_stable_.*_universal\\.apk$"
+    }
+  ]
+}

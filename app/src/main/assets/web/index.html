@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PureTV 网页面板</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b141a; --card:#111d24; --line:#22343e; --text:#e1e9ef; --muted:#94a7b4; --accent:#7fd1ff; --danger:#ffb4ab; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: radial-gradient(1200px 600px at 20% -10%, #123240 0%, var(--bg) 55%); color:var(--text); }
+  header, main { width:min(1080px, calc(100% - 40px)); margin:0 auto; }
+  header { padding:40px 0 20px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  h1 { margin:0; font-size:30px; letter-spacing:.5px; }
+  h2 { margin:0; font-size:19px; }
+  header p { margin:6px 0 0; color:var(--muted); font-size:14px; }
+  .pill { border:1px solid var(--line); color:var(--muted); padding:6px 12px; border-radius:999px; font-size:12px; }
+  main { padding-bottom:60px; display:grid; gap:18px; }
+  .card { background:linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--card); border:1px solid var(--line); border-radius:18px; padding:22px; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .between { justify-content:space-between; }
+  .muted { color:var(--muted); font-size:14px; }
+  button, .button { appearance:none; border:1px solid var(--line); background:#16262f; color:var(--text); padding:10px 16px; border-radius:10px; font-size:14px; cursor:pointer; }
+  button:hover { border-color:#3a5563; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#00344a; font-weight:600; }
+  button.danger { color:var(--danger); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  input[type=file] { color:var(--muted); font-size:13px; max-width:100%; }
+  progress { width:100%; height:8px; margin-top:12px; accent-color:var(--accent); }
+  .status { min-height:20px; margin:10px 0 0; font-size:14px; color:var(--muted); }
+  .status.error { color:var(--danger); }
+  .crumbs { display:flex; gap:6px; flex-wrap:wrap; margin:16px 0 6px; }
+  .crumbs button { padding:6px 10px; font-size:13px; }
+  .crumbs span { color:var(--muted); align-self:center; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th, td { text-align:left; padding:11px 8px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:middle; }
+  th { color:var(--muted); font-weight:500; font-size:12px; letter-spacing:.4px; }
+  td.name { word-break:break-all; }
+  td.actions { white-space:nowrap; text-align:right; }
+  td.actions button, td.actions a { padding:6px 10px; font-size:13px; margin-left:6px; text-decoration:none; display:inline-block; }
+  .notice { display:none; border:1px solid #4a3a1b; background:#2a2314; color:#ffd794; border-radius:12px; padding:12px 16px; font-size:14px; }
+  .notice.show { display:block; }
+  .empty { color:var(--muted); text-align:center; padding:22px 0; }
+  code { background:#16262f; padding:2px 6px; border-radius:6px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>PureTV 商店</h1>
+    <p id="status-line">正在连接电视…</p>
+  </div>
+  <span class="pill">仅限同一局域网</span>
+</header>
+
+<main>
+  <div id="notice" class="notice"></div>
+
+  <section class="card">
+    <h2>上传 APK 并安装</h2>
+    <p class="muted">选择 APK 后上传，电视会弹出安装确认，用遥控器确认即可。</p>
+    <div class="row" style="margin-top:14px">
+      <input type="file" id="apk-input" accept=".apk,application/vnd.android.package-archive">
+      <button id="apk-button" class="primary" disabled>上传并安装</button>
+    </div>
+    <progress id="apk-progress" max="100" value="0" hidden></progress>
+    <p id="apk-status" class="status"></p>
+  </section>
+
+  <section class="card">
+    <div class="row between">
+      <h2>文件管理</h2>
+      <div class="row">
+        <button id="refresh-button">刷新</button>
+        <button id="mkdir-button">新建文件夹</button>
+        <button id="file-button" class="primary">上传文件到当前目录</button>
+        <input type="file" id="file-input" hidden>
+      </div>
+    </div>
+    <nav id="crumbs" class="crumbs"></nav>
+    <progress id="file-progress" max="100" value="0" hidden></progress>
+    <p id="file-status" class="status"></p>
+    <table>
+      <thead>
+        <tr><th>名称</th><th>大小</th><th>修改时间</th><th style="text-align:right">操作</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let currentPath = null;
+  let ready = false;
+
+  async function api(path, options) {
+    const response = await fetch(path, options);
+    let data = {};
+    try { data = await response.json(); } catch (_) { /* keep empty */ }
+    if (!response.ok || data.ok === false) {
+      throw new Error(data.error || ("请求失败（" + response.status + "）"));
+    }
+    return data;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  }
+
+  function formatSize(bytes) {
+    if (!bytes) return "—";
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes, unit = 0;
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+    return value.toFixed(unit === 0 ? 0 : 1) + " " + units[unit];
+  }
+
+  function formatTime(ms) {
+    if (!ms) return "—";
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+      " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  function setStatus(element, text, isError) {
+    element.textContent = text || "";
+    element.classList.toggle("error", Boolean(isError));
+  }
+
+  function setBusy(busy, which) {
+    if (which === "apk") {
+      $("apk-button").disabled = busy || !ready || !$("apk-input").files.length;
+    } else {
+      $("file-button").disabled = busy || !ready;
+      $("mkdir-button").disabled = busy || !ready;
+      $("refresh-button").disabled = busy || !ready;
+    }
+  }
+
+  async function loadStatus() {
+    try {
+      const status = await api("/api/status");
+      $("status-line").textContent = "版本 " + status.version + " · " + status.url;
+      if (!status.canInstall) {
+        $("notice").textContent = "电视还没有允许安装未知应用，APK 可以上传但不会自动安装。请在电视的商店页面开启后再试。";
+        $("notice").classList.add("show");
+      }
+    } catch (_) {
+      $("status-line").textContent = "无法连接电视，请确认电视上的服务已开启";
+    }
+  }
+
+  function renderCrumbs(data) {
+    const nav = $("crumbs");
+    nav.innerHTML = "";
+    const root = data.root || "/";
+    const rootName = root.split("/").filter(Boolean).pop() || "电视";
+    const rootButton = document.createElement("button");
+    rootButton.textContent = rootName;
+    rootButton.onclick = () => loadDir(root);
+    nav.appendChild(rootButton);
+
+    if (data.path && data.path.startsWith(root) && data.path !== root) {
+      let accumulated = root;
+      data.path.slice(root.length).split("/").filter(Boolean).forEach((segment) => {
+        accumulated += "/" + segment;
+        const separator = document.createElement("span");
+        separator.textContent = "/";
+        nav.appendChild(separator);
+        const button = document.createElement("button");
+        button.textContent = segment;
+        button.onclick = () => loadDir(accumulated);
+        nav.appendChild(button);
+      });
+    }
+  }
+
+  function addAction(cell, label, onClick, danger) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    if (danger) button.classList.add("danger");
+    button.onclick = onClick;
+    cell.appendChild(button);
+  }
+
+  function renderRows(entries) {
+    const body = $("rows");
+    body.innerHTML = "";
+    if (!entries.length) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 4;
+      cell.className = "empty";
+      cell.textContent = "这个文件夹是空的";
+      row.appendChild(cell);
+      body.appendChild(row);
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const row = document.createElement("tr");
+
+      const nameCell = document.createElement("td");
+      nameCell.className = "name";
+      nameCell.textContent = (entry.dir ? "[文件夹] " : "") + entry.name;
+      row.appendChild(nameCell);
+
+      const sizeCell = document.createElement("td");
+      sizeCell.textContent = entry.dir ? "—" : formatSize(entry.size);
+      row.appendChild(sizeCell);
+
+      const timeCell = document.createElement("td");
+      timeCell.textContent = formatTime(entry.modified);
+      row.appendChild(timeCell);
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "actions";
+      if (entry.dir) {
+        addAction(actionCell, "打开", () => loadDir(entry.path));
+      } else {
+        const link = document.createElement("a");
+        link.href = "/api/download?path=" + encodeURIComponent(entry.path);
+        link.textContent = "下载";
+        actionCell.appendChild(link);
+      }
+      addAction(actionCell, "重命名", () => renameEntry(entry));
+      addAction(actionCell, "删除", () => deleteEntry(entry), true);
+      row.appendChild(actionCell);
+
+      body.appendChild(row);
+    });
+  }
+
+  async function loadDir(path) {
+    try {
+      const query = path ? "?path=" + encodeURIComponent(path) : "";
+      const data = await api("/api/files" + query);
+      currentPath = data.path;
+      ready = true;
+      renderCrumbs(data);
+      renderRows(data.entries || []);
+      setBusy(false, "apk");
+      setBusy(false, "file");
+      setStatus($("file-status"), "");
+    } catch (error) {
+      setStatus($("file-status"), error.message, true);
+    }
+  }
+
+  function uploadFile(file, directory, kind) {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      form.append("dir", directory);
+      form.append("name", file.name);
+
+      const progress = $(kind === "apk" ? "apk-progress" : "file-progress");
+      progress.hidden = false;
+      progress.value = 0;
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) progress.value = (event.loaded / event.total) * 100;
+      };
+      xhr.onload = () => {
+        progress.hidden = true;
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch (_) { /* keep empty */ }
+        if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+          resolve(data);
+        } else {
+          reject(new Error(data.error || "上传失败"));
+        }
+      };
+      xhr.onerror = () => {
+        progress.hidden = true;
+        reject(new Error("上传中断，请检查网络后重试"));
+      };
+      xhr.send(form);
+    });
+  }
+
+  async function uploadApk() {
+    const file = $("apk-input").files[0];
+    if (!file || !currentPath) return;
+    setBusy(true, "apk");
+    setStatus($("apk-status"), "正在上传，请稍候…");
+    try {
+      const data = await uploadFile(file, currentPath, "apk");
+      const install = data.install || {};
+      if (install.status === "needs_permission") {
+        setStatus($("apk-status"), "已上传，但电视还没有允许安装未知应用，请先在电视上开启。", true);
+      } else if (install.status === "failed") {
+        setStatus($("apk-status"), "已上传，但安装没有开始：" + (install.message || "未知原因"), true);
+      } else {
+        setStatus($("apk-status"), "上传完成，请在电视上用遥控器确认安装。");
+      }
+      $("apk-input").value = "";
+    } catch (error) {
+      setStatus($("apk-status"), error.message, true);
+    } finally {
+      setBusy(false, "apk");
+      loadDir(currentPath);
+    }
+  }
+
+  async function uploadRegularFile() {
+    const file = $("file-input").files[0];
+    if (!file || !currentPath) return;
+    setBusy(true, "file");
+    setStatus($("file-status"), "正在上传 " + file.name + "…");
+    try {
+      await uploadFile(file, currentPath, "file");
+      setStatus($("file-status"), "上传完成：" + file.name);
+      $("file-input").value = "";
+      await loadDir(currentPath);
+    } catch (error) {
+      setStatus($("file-status"), error.message, true);
+    } finally {
+      setBusy(false, "file");
+    }
+  }
+
+  async function renameEntry(entry) {
+    const name = prompt("新的名称", entry.name);
+    if (!name || name === entry.name) return;
+    try {
+      await api("/api/rename", {
+        method: "POST",
+        body: new URLSearchParams({ path: entry.path, name: name })
+      });
+      await loadDir(currentPath);
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function deleteEntry(entry) {
+    if (!confirm("确定删除 " + entry.name + " 吗？文件夹会连同里面的内容一起删除。")) return;
+    try {
+      await api("/api/delete", {
+        method: "POST",
+        body: new URLSearchParams({ path: entry.path })
+      });
+      await loadDir(currentPath);
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function makeDirectory() {
+    const name = prompt("新文件夹名称");
+    if (!name || !currentPath) return;
+    try {
+      await api("/api/mkdir", {
+        method: "POST",
+        body: new URLSearchParams({ dir: currentPath, name: name })
+      });
+      await loadDir(currentPath);
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  $("apk-input").addEventListener("change", () => setBusy(false, "apk"));
+  $("apk-button").addEventListener("click", uploadApk);
+  $("file-button").addEventListener("click", () => $("file-input").click());
+  $("file-input").addEventListener("change", uploadRegularFile);
+  $("mkdir-button").addEventListener("click", makeDirectory);
+  $("refresh-button").addEventListener("click", () => loadDir(currentPath));
+
+  loadStatus();
+  loadDir(null);
+})();
+</script>
+</body>
+</html>

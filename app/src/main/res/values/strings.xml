@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PureTV 商店</string>
+    <string name="notification_channel_server">网页传文件服务</string>
+    <string name="notification_channel_install">应用安装</string>
+</resources>

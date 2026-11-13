@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.log
+.env
+
+# Release signing material never enters the repository.
+signing/
+**/signing/
+*.jks
+*.keystore
+*.p12

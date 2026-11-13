@@ -1,0 +1,134 @@
+name: Release APK
+
+# Only trusted pushes and manual runs may access signing secrets.
+# Never add pull_request triggers to this workflow.
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Only the protected release branch may run this job; others get no secrets.
+    if: github.ref_name == 'release'
+    environment: release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - name: Require signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Missing release signing secrets. Configure RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD."
+            exit 1
+          fi
+
+      - name: Restore local signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          mkdir -p signing
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > signing/puretvstore-release.jks
+          {
+            echo "storeFile=../signing/puretvstore-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > signing/signing.properties
+
+      - name: Ensure Android SDK packages
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=$(command -v sdkmanager)
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" >/dev/null
+          "$SDKMANAGER" --install "build-tools;37.0.0" >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "build-tools;36.0.0" >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-37.0" >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-37.1" >/dev/null 2>&1 || true
+          ls "$ANDROID_HOME/platforms" | grep -q '^android-37' || {
+            echo "::error::Android SDK platform 37 is unavailable on this runner."
+            exit 1
+          }
+
+      - name: Test and build signed release
+        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease
+
+      - name: Verify and read release metadata
+        id: meta
+        run: |
+          metadata=app/build/outputs/apk/release/output-metadata.json
+          version_name=$(jq -r '.elements[0].versionName' "$metadata")
+          version_code=$(jq -r '.elements[0].versionCode' "$metadata")
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | grep -q "CN=PureTV Store"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          tag="v${version_name}"
+          if [ "${GITHUB_RUN_ATTEMPT}" != "1" ]; then
+            tag="${tag}-a${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          cp app/build/outputs/apk/release/app-release.apk "${RUNNER_TEMP}/PureTVStore-${version_name}.apk"
+          echo "apk=${RUNNER_TEMP}/PureTVStore-${version_name}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Compose release notes
+        run: |
+          notes="${RUNNER_TEMP}/release-notes.md"
+          awk -v v="${{ steps.meta.outputs.version_name }}" '
+            index($0, "## [" v "]") == 1 { capture = 1; next }
+            capture && index($0, "## [") == 1 { exit }
+            capture { print }
+          ' CHANGELOG.md > "$notes"
+          if [ ! -s "$notes" ]; then
+            printf '本版本未单独列出更新内容，详情见提交记录。\n' > "$notes"
+          fi
+          cat >> "$notes" <<EOF
+
+          ---
+
+          **版本**：${{ steps.meta.outputs.version_name }}（${{ steps.meta.outputs.version_code }}）
+          **安装包**：PureTVStore-${{ steps.meta.outputs.version_name }}.apk
+          **支持系统**：Android 6.0 及以上（电视或电视盒子）
+          **安装方式**：下载 APK 后放到电视上安装；也可用 PureTV 手机助手的“安装 PureTV 商店”一键安装。
+          EOF
+          cat "$notes"
+
+      - name: Create draft release with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION_NAME: ${{ steps.meta.outputs.version_name }}
+          APK: ${{ steps.meta.outputs.apk }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: |
+          gh release create "$TAG" "$APK" \
+            --target "$GITHUB_SHA" \
+            --title "PureTV 商店 ${VERSION_NAME}" \
+            --notes-file "$NOTES_FILE" \
+            --draft
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false

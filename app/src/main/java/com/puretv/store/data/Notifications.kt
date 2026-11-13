@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import com.puretv.store.MainActivity
 import com.puretv.store.R
@@ -18,6 +20,12 @@ object Notifications {
     const val INSTALL_NOTIFICATION_ID = 11
 
     fun ensureChannels(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        createChannels(context)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_SERVER, "网页传文件", NotificationManager.IMPORTANCE_LOW)

@@ -1,5 +1,6 @@
 package com.puretv.store.data
 
+import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -89,7 +90,11 @@ class GitHubClient(private val userAgent: String = "PureTVStore") {
         try {
             val code = connection.responseCode
             if (code !in 200..299) throw GitHubException("下载安装包失败（$code）")
-            val total = connection.contentLengthLong
+            val total = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                connection.contentLengthLong
+            } else {
+                connection.contentLength.toLong()
+            }
             connection.inputStream.use { input ->
                 target.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)

@@ -41,7 +41,7 @@ class StoreUpdaterTest {
             <feed xmlns="http://www.w3.org/2005/Atom">
               <entry>
                 <title>1.2.0</title>
-                <content type="html">&lt;h2&gt;新增&lt;/h2&gt;&lt;p&gt;检查更新&lt;/p&gt;</content>
+                <content type="html">&lt;h2&gt;新增&lt;/h2&gt;&lt;p&gt;检查更新&lt;br/&gt;第二行&lt;/p&gt;</content>
                 <link rel="alternate" href="https://github.com/JamesWDGu/PureTVStore/releases/tag/v1.2.0"/>
               </entry>
             </feed>
@@ -52,7 +52,8 @@ class StoreUpdaterTest {
             "https://github.com/JamesWDGu/PureTVStore/releases/download/v1.2.0/PureTVStore-1.2.0.apk",
             update.apkUrl,
         )
-        assertEquals("新增\n检查更新", update.notes)
+        assertEquals("新增\n检查更新\n第二行", update.notes)
+        assertEquals("A\nB", parseStoreUpdateAtom("<feed><entry><link href=\"/releases/tag/v1.2.1\"/><content>A&#10;B</content></entry></feed>")!!.notes)
     }
 
     @Test

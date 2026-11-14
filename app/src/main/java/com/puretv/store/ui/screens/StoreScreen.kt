@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.puretv.store.R
 import com.puretv.store.data.StoreApp
 import com.puretv.store.ui.FocusButton
@@ -59,6 +63,14 @@ fun StoreScreen(
     onInstall: (String) -> Unit,
     onOpenInstallPermission: () -> Unit,
 ) {
+    val firstCard = remember { FocusRequester() }
+    LaunchedEffect(state.rows) {
+        if (state.rows.isNotEmpty()) {
+            delay(120)
+            runCatching { firstCard.requestFocus() }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         if (!state.canInstall) {
             NoticeCard(
@@ -122,8 +134,16 @@ fun StoreScreen(
                             )
                         }
                     }
-                    items(state.rows, key = { it.app.id }) { row ->
-                        AppCard(row = row, onInstall = onInstall)
+                    itemsIndexed(state.rows, key = { _, row -> row.app.id }) { index, row ->
+                        AppCard(
+                            row = row,
+                            onInstall = onInstall,
+                            modifier = if (index == 0) {
+                                Modifier.focusRequester(firstCard)
+                            } else {
+                                Modifier
+                            },
+                        )
                     }
                 }
             }
@@ -194,7 +214,11 @@ private fun StatPill(text: String) {
 }
 
 @Composable
-private fun AppCard(row: StoreRow, onInstall: (String) -> Unit) {
+private fun AppCard(
+    row: StoreRow,
+    onInstall: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val actionable = row.status == RowStatus.IDLE || row.status == RowStatus.ERROR
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(22.dp)
@@ -216,7 +240,7 @@ private fun AppCard(row: StoreRow, onInstall: (String) -> Unit) {
     Surface(
         shape = shape,
         color = container,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(190.dp)
             .graphicsLayer {

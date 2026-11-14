@@ -48,8 +48,8 @@
 |`data/WebServerService.kt`|前台服务与运行状态（`ServerState`）|
 |`ui/StoreViewModel.kt`|商店列表、下载安装状态、服务与权限状态|
 |`ui/TvApp.kt`|标题、标签页、权限刷新|
-|`ui/TvComponents.kt`|电视焦点按钮与焦点边框|
-|`ui/screens/StoreScreen.kt`|商店卡片列表|
+|`ui/TvComponents.kt`|电视焦点按钮：放大、提亮、投影，不绘制边框|
+|`ui/screens/StoreScreen.kt`|商店推荐横幅与双列应用卡片|
 |`ui/screens/FileShareScreen.kt`|网页服务地址、开关与权限入口|
 |`ui/screens/StoreUpdateDialog.kt`|发现新版本/下载进度/失败提示弹窗|
 |`assets/web/index.html`|电脑浏览器页面（原生 JS，无外部依赖）|
@@ -107,6 +107,12 @@
   端口映射。页面与 API 不提供任意命令执行。
 - 上传文件大小与类型不信任客户端；APK 也必须由系统安装器验证签名与兼容性。
 - 网页与电视端文案使用普通用户语言；错误要给出下一步，不展示堆栈。
+- 界面固定使用深色配色：`PureTVStoreTheme` 不得读取系统浅色设置，也不提供浅色入口，
+  避免电视在明亮环境中整屏发白。
+- 焦点与选中状态只用放大、提亮、填充色和投影表达；不得用 `border`/细描边画焦点框，
+  避免出现按钮或卡片外圈未填充的空隙。
+- 启动图标必须是 `@mipmap/ic_launcher` 自适应图标，背景铺满、前景位于 66dp 安全区内；
+  不要改回带透明边距的普通 drawable，否则电视桌面会给图标套一圈空白。
 - 不新增遥测、崩溃上报、广告 SDK；联网仅限清单、GitHub Release、APK 下载。
 - 网络请求只在 `Dispatchers.IO`；下载进度节流，避免高频更新 UI。
 - 只保留一个前台服务；停止服务时关闭 NanoHTTPD 并更新 `ServerState`。

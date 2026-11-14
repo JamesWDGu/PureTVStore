@@ -9,6 +9,7 @@ data class StoreApp(
     val repo: String,
     val description: String,
     val assetPattern: String,
+    val iconUrl: String? = null,
 )
 
 class StoreConfigException(message: String) : Exception(message)
@@ -62,6 +63,7 @@ object StoreConfigParser {
                 val repo = item.optString("repo").trim()
                 val description = item.optString("description").trim()
                 val assetPattern = item.optString("assetPattern").trim().ifBlank { ".*\\.apk$" }
+                val iconUrl = item.optString("iconUrl").trim().ifBlank { null }
 
                 if (id.isBlank()) throw StoreConfigException("第 ${index + 1} 个应用缺少标识")
                 if (name.isBlank()) throw StoreConfigException("${id} 缺少名称")
@@ -76,7 +78,10 @@ object StoreConfigParser {
                 } catch (_: Exception) {
                     throw StoreConfigException("$name 的安装包匹配规则无效")
                 }
-                add(StoreApp(id, name, packageName, repo, description, assetPattern))
+                if (iconUrl != null && !iconUrl.startsWith("https://") && !iconUrl.startsWith("http://")) {
+                    throw StoreConfigException("$name 的图标地址必须是 http(s) 链接")
+                }
+                add(StoreApp(id, name, packageName, repo, description, assetPattern, iconUrl))
             }
         }
 

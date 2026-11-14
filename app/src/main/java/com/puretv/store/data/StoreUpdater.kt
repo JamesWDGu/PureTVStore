@@ -189,7 +189,7 @@ internal fun parseStoreUpdateAtom(xml: String): StoreUpdate? {
     )
 }
 
-internal fun plainReleaseNotes(text: String): String = text
+internal fun plainReleaseNotes(text: String): String = decodeEntities(text)
     .replace(Regex("(?m)^#{1,6}\\s*"), "")
     .replace("**", "")
     .replace("`", "")
@@ -198,7 +198,8 @@ internal fun plainReleaseNotes(text: String): String = text
     .joinToString("\n") { it.trimEnd() }
     .trim()
 
-private fun htmlToText(html: String): String = html
+private fun decodeEntities(text: String): String = text
+    .replace("&amp;", "&")
     .replace("&lt;", "<")
     .replace("&gt;", ">")
     .replace("&quot;", "\"")
@@ -214,11 +215,12 @@ private fun htmlToText(html: String): String = html
             ?.let { String(Character.toChars(it)) }
             ?: match.value
     }
+    .replace("&nbsp;", " ")
+
+private fun htmlToText(html: String): String = decodeEntities(html)
     .replace(Regex("(?i)<br\\s*/?>"), "\n")
     .replace(Regex("(?i)</(p|h[1-6]|li|ul|ol)>"), "\n")
     .replace(Regex("<[^>]+>"), "")
-    .replace("&nbsp;", " ")
-    .replace("&amp;", "&")
     .replace(Regex("[ \\t]+"), " ")
     .replace(Regex("\\n{3,}"), "\n\n")
     .trim()

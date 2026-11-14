@@ -167,4 +167,22 @@ class StoreConfigParserTest {
 
     private val smartTubePattern =
         "^SmartTube_stable_.*_(universal|arm64-v8a|armeabi-v7a|x86_64|x86)\\.apk$"
+
+    @Test
+    fun parsesOptionalIconUrl() {
+        val apps = StoreConfigParser.parse(
+            """{"apps":[{"id":"a","name":"A","packageName":"com.example.a","repo":"o/r","iconUrl":"https://example.com/a.png"}]}"""
+        )
+        assertEquals("https://example.com/a.png", apps.single().iconUrl)
+    }
+
+    @Test
+    fun rejectsNonHttpIconUrl() {
+        val error = runCatching {
+            StoreConfigParser.parse(
+                """{"apps":[{"id":"a","name":"A","packageName":"com.example.a","repo":"o/r","iconUrl":"file:///tmp/a.png"}]}"""
+            )
+        }.exceptionOrNull()
+        assertTrue(error is StoreConfigException)
+    }
 }

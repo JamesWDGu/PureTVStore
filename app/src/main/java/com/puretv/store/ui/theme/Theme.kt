@@ -51,10 +51,6 @@ private val TvTypography = Typography(
 
 /** Colours that are not part of the M3 roles but define the store look. */
 object StorePalette {
-    val heroGradient = Brush.horizontalGradient(
-        listOf(Color(0xFF0B3A52), Color(0xFF16212E), Color(0xFF101925)),
-    )
-
     val tileGradients: List<List<Color>> = listOf(
         listOf(Color(0xFF2F80ED), Color(0xFF56CCF2)),
         listOf(Color(0xFF8E54E9), Color(0xFF4776E6)),

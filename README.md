@@ -63,7 +63,8 @@
       "packageName": "rocks.aston.hongguotv",
       "repo": "aston314/hongguo-tv-releases",
       "description": "红果短剧电视版，提供短剧内容。",
-      "assetPattern": "^hongguo-tv-[0-9].*\\.apk$"
+      "assetPattern": "^hongguo-tv-[0-9].*\\.apk$",
+      "iconUrl": "https://raw.githubusercontent.com/JamesWDGu/PureTVStore/main/store/icons/hongguo.png"
     }
   ]
 }
@@ -72,6 +73,8 @@
 - `packageName` 用于判断是否已安装以及版本高低。
 - `repo` 是 GitHub 仓库，必须发布正式 Release。
 - `assetPattern` 是从 Release 附件中挑选 APK 的正则；省略时选择第一个 `.apk`。
+- `iconUrl` 可省略。已安装的应用直接读取电视上的真实图标；未安装时从该地址下载并缓存，
+  省略或加载失败则显示首字母色块。图标建议为正方形 PNG。
 - 同一个 Release 有多个架构安装包时，会按电视 CPU 自动选择：优先 `arm64-v8a`（64 位 ARM）、
   `armeabi-v7a`（32 位 ARM）、`x86_64`、`x86`，只有没有匹配架构时才使用 universal/通用包；
   没有可用包会在应用行显示原因。

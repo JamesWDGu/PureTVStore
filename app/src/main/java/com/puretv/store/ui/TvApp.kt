@@ -54,6 +54,9 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
         viewModel.refreshInstalled()
     }
 
+    val dialogVisible = state.update.available != null ||
+        state.update.error != null ||
+        state.update.message != null
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -67,6 +70,14 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
             )
             .systemBarsPadding(),
     ) {
+        if (dialogVisible) {
+            StoreUpdateDialog(
+                state = state.update,
+                onDownload = viewModel::downloadUpdate,
+                onDismiss = viewModel::dismissUpdate,
+            )
+            return@Box
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -100,11 +111,6 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
         }
     }
 
-    StoreUpdateDialog(
-        state = state.update,
-        onDownload = viewModel::downloadUpdate,
-        onDismiss = viewModel::dismissUpdate,
-    )
 }
 
 @Composable

@@ -3,6 +3,7 @@ package com.puretv.store.ui.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,15 +43,17 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import com.puretv.store.R
+import com.puretv.store.data.AppIconLoader
 import com.puretv.store.data.StoreApp
 import com.puretv.store.ui.FocusButton
 import com.puretv.store.ui.RowStatus
@@ -117,14 +121,12 @@ fun StoreScreen(
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        StoreHero(state.rows)
-                    }
-                    item(span = { GridItemSpan(maxLineSpan) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "全部应用",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(
@@ -152,74 +154,20 @@ fun StoreScreen(
 }
 
 @Composable
-private fun StoreHero(rows: List<StoreRow>) {
-    val installed = rows.count { it.installedVersion != null }
-    Surface(shape = RoundedCornerShape(28.dp), color = Color.Transparent) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                .background(StorePalette.heroGradient)
-                .padding(horizontal = 26.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = "把好应用装进电视",
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "精选开源电视应用，安装和更新都在这里完成。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatPill("已收录 ${rows.size} 个应用")
-                    StatPill("已安装 $installed 个")
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .size(92.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(R.drawable.ic_launcher),
-                    contentDescription = null,
-                    modifier = Modifier.size(70.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatPill(text: String) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = Color.White.copy(alpha = 0.10f),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-        )
-    }
-}
-
-@Composable
 private fun AppCard(
     row: StoreRow,
     onInstall: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val actionable = row.status == RowStatus.IDLE || row.status == RowStatus.ERROR
+    val context = LocalContext.current
+    val icon by produceState<ImageBitmap?>(
+        initialValue = null,
+        row.app.id,
+        row.installedVersion,
+    ) {
+        value = AppIconLoader.load(context, row.app, row.installedVersion != null)
+    }
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(22.dp)
     val scale by animateFloatAsState(
@@ -258,7 +206,7 @@ private fun AppCard(
     ) {
         Column(Modifier.padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AppTile(row.app)
+                AppTile(row.app, icon)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -326,7 +274,18 @@ private fun AppCard(
 }
 
 @Composable
-private fun AppTile(app: StoreApp) {
+private fun AppTile(app: StoreApp, icon: ImageBitmap?) {
+    if (icon != null) {
+        Image(
+            bitmap = icon,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(16.dp)),
+        )
+        return
+    }
     val colors = remember(app.id) {
         StorePalette.tileGradients[(app.id.hashCode() and Int.MAX_VALUE) % StorePalette.tileGradients.size]
     }

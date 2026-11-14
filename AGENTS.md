@@ -35,10 +35,11 @@
 |---|---|
 |`MainActivity.kt`|启动网页服务、通知权限、显示 Compose 界面|
 |`PureTVStoreApp.kt`|创建通知渠道|
-|`data/StoreConfig.kt`|清单模型、JSON 校验、APK 资产选择、版本比较|
+|`data/StoreConfig.kt`|清单模型、JSON 校验、APK 资产选择、版本比较、可选图标地址|
 |`data/GitHubClient.kt`|GitHub Release API、重定向下载与进度|
 |`data/StoreRepository.kt`|清单读取（网络 → 缓存 → 内置）、Release 5 分钟缓存、下载|
 |`data/InstalledApps.kt`|读取已安装应用的版本名/版本号|
+|`data/AppIconLoader.kt`|已安装应用读取系统图标；未安装应用下载 `iconUrl` 并做内存/磁盘缓存|
 |`data/StoreUpdater.kt`|商店自身更新检查（API → Atom 回退）、下载与版本解析|
 |`data/ApkInstaller.kt`|安装会话（网页上传）、FileProvider 直接安装（商店行）、安装权限入口|
 |`data/Notifications.kt`|网页服务与安装结果通知|
@@ -49,9 +50,9 @@
 |`ui/StoreViewModel.kt`|商店列表、下载安装状态、服务与权限状态|
 |`ui/TvApp.kt`|标题、标签页、权限刷新|
 |`ui/TvComponents.kt`|电视焦点按钮：放大、提亮、投影，不绘制边框|
-|`ui/screens/StoreScreen.kt`|商店推荐横幅与双列应用卡片|
+|`ui/screens/StoreScreen.kt`|双列应用卡片（真实图标、状态与安装操作）|
 |`ui/screens/FileShareScreen.kt`|网页服务地址、开关与权限入口|
-|`ui/screens/StoreUpdateDialog.kt`|发现新版本/下载进度/失败提示弹窗|
+|`ui/screens/StoreUpdateDialog.kt`|同窗口全屏覆盖层：发现新版本/下载进度/失败提示，打开即聚焦主按钮|
 |`assets/web/index.html`|电脑浏览器页面（原生 JS，无外部依赖）|
 |`assets/store-apps.json`|断网时的内置清单，与 `store/apps.json` 同步|
 
@@ -95,6 +96,10 @@
 - 安装前校验 APK 的包名与 `versionCode`，避免把其他应用或旧版本装到同一包名上。
 - 商店自身更新只允许来自 `JamesWDGu/PureTVStore` 的 Release；先 API 后 Atom，两者都失败
   才提示错误；不得静默安装或后台自动安装，必须经系统安装器确认。
+- 更新提示必须是主窗口内的全屏覆盖层（隐藏后台内容并自动聚焦主按钮），不得改回独立
+  `Dialog` 窗口：部分电视上对话框拿不到初始焦点，遥控器方向键/确定键无法操作。
+- 应用卡片优先显示真实图标：已安装包用 `PackageManager` 图标，未安装用清单 `iconUrl`；
+  只有两者都不可用时才用首字母色块。图标请求在 IO 线程并缓存，不阻塞滚动。
 - 清单只能来自 `store/apps.json`、上次成功缓存或内置资产；不要从用户输入拼 URL。
 - 包名进入 `PackageManager` 前必须通过包名正则校验；仓库名必须符合 `owner/repo`。
 - 版本比较按数字段，不得用字符串排序；缺少已装版本视为可安装。

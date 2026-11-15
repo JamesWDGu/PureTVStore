@@ -185,4 +185,13 @@ class StoreConfigParserTest {
         }.exceptionOrNull()
         assertTrue(error is StoreConfigException)
     }
+
+    @Test
+    fun `selects the aerial standard build`() {
+        val names = listOf("aerial-guard.apk", "aerial-lite.apk", "aerial-standard.apk")
+
+        val selected = StoreConfigParser.selectAsset(names, "^aerial-standard\\.apk$")
+
+        assertEquals("aerial-standard.apk", selected)
+    }
 }

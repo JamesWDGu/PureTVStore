@@ -17,6 +17,15 @@
       "description": "为电视设计的 YouTube 客户端，支持高帧率与无广告播放。",
       "assetPattern": "^SmartTube_stable_.*_(universal|arm64-v8a|armeabi-v7a|x86_64|x86)\\.apk$",
       "iconUrl": "https://raw.githubusercontent.com/JamesWDGu/PureTVStore/main/store/icons/smarttube.png"
+    },
+    {
+      "id": "aerial",
+      "name": "Aerial",
+      "packageName": "app.orchard.tv",
+      "repo": "pengchujin/aerial-tv",
+      "description": "给国产电视的 tvOS 风格开源桌面，没有广告，可开机接管。",
+      "assetPattern": "^aerial-standard\\.apk$",
+      "iconUrl": "https://raw.githubusercontent.com/JamesWDGu/PureTVStore/main/store/icons/aerial.png"
     }
   ]
 }

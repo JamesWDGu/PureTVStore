@@ -117,7 +117,14 @@
 - 界面固定使用深色配色：`PureTVStoreTheme` 不得读取系统浅色设置，也不提供浅色入口，
   避免电视在明亮环境中整屏发白。
 - 焦点与选中状态只用放大、提亮、填充色和投影表达；不得用 `border`/细描边画焦点框，
-  避免出现按钮或卡片外圈未填充的空隙。
+  避免出现按钮或卡片外圈未填充的空隙。所有可交互元素统一使用 `TvFocus.scale` 与
+  `TvFocus.elevation`，焦点填充色统一为 primary，不得各自定义放大比例或反色方案。
+- 带 alpha 的 `Surface` 必须显式传 `contentColor`（`contentColorFor` 对 alpha 副本匹配失败，
+  会让未设色文本回退成黑色）；`StoreRoot` 同时提供 `LocalContentColor = onBackground`。
+- 商店行排序固定为：有更新 → 未安装 → 已是最新；`StoreRow.hasUpdate` 是唯一判断，
+  `refreshInstalled()` 必须重新计算，且不得覆盖正在 `DOWNLOADING` 的行。
+- 有更新且状态为 `IDLE` 时，操作胶囊文案为“更新”，使用 `StorePalette.updateAccent` 黄色底，
+  不得显示成“安装”。
 - 启动图标必须同时提供：`mipmap-anydpi-v26` 自适应图标（背景铺满，前景 108dp 画布、
   内容位于中央 66dp 安全区）、`mipmap-anydpi-v33` 带 `monochrome` 的主题图标，以及
   `mipmap-{m,h,xh,xxh,xxxh}dpi` 的方形/圆形 PNG 回退（Android 8.0 以下没有 anydpi-v26，

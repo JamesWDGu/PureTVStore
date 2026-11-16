@@ -22,7 +22,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * TV button: the focused state grows and inverts to a bright filled pill instead
+ * One focus treatment for every interactive element: same growth, same glow.
+ * The focused fill is always the primary colour, so tabs, buttons and cards
+ * read the same way from the sofa.
+ */
+object TvFocus {
+    const val scale = 1.05f
+    val elevation = 12.dp
+}
+
+/**
+ * TV button: the focused state grows and fills with the primary colour instead
  * of drawing a thin outline around an empty gap.
  */
 @Composable
@@ -36,14 +46,14 @@ fun FocusButton(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     val scale by animateFloatAsState(
-        targetValue = if (focused && enabled) 1.06f else 1f,
+        targetValue = if (focused && enabled) TvFocus.scale else 1f,
         animationSpec = tween(120),
         label = "buttonScale",
     )
     val container by animateColorAsState(
         targetValue = when {
             !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            focused -> MaterialTheme.colorScheme.onSurface
+            focused -> MaterialTheme.colorScheme.primary
             tonal -> MaterialTheme.colorScheme.surfaceVariant
             else -> MaterialTheme.colorScheme.primary
         },
@@ -53,7 +63,7 @@ fun FocusButton(
     val content by animateColorAsState(
         targetValue = when {
             !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            focused -> MaterialTheme.colorScheme.background
+            focused -> MaterialTheme.colorScheme.onPrimary
             tonal -> MaterialTheme.colorScheme.onSurfaceVariant
             else -> MaterialTheme.colorScheme.onPrimary
         },
@@ -78,7 +88,7 @@ fun FocusButton(
                 scaleY = scale
             }
             .shadow(
-                elevation = if (focused && enabled) 14.dp else 0.dp,
+                elevation = if (focused && enabled) TvFocus.elevation else 0.dp,
                 shape = shape,
                 ambientColor = MaterialTheme.colorScheme.primary,
                 spotColor = MaterialTheme.colorScheme.primary,

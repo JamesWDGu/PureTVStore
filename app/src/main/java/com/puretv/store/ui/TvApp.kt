@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,60 +60,62 @@ fun StoreRoot(viewModel: StoreViewModel = viewModel()) {
     val dialogVisible = state.update.available != null ||
         state.update.error != null ||
         state.update.message != null
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.surfaceContainerLowest,
-                    ),
-                ),
-            )
-            .systemBarsPadding(),
-    ) {
-        if (dialogVisible) {
-            StoreUpdateDialog(
-                state = state.update,
-                onDownload = viewModel::downloadUpdate,
-                onDismiss = viewModel::dismissUpdate,
-            )
-            return@Box
-        }
-        Column(
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 48.dp, vertical = 24.dp),
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.background,
+                            MaterialTheme.colorScheme.surfaceContainerLowest,
+                        ),
+                    ),
+                )
+                .systemBarsPadding(),
         ) {
-            Header(
-                tab = tab,
-                onTab = { tab = it },
-                loading = state.loading,
-                checkingUpdate = state.update.checking,
-                versionName = state.versionName,
-                onRefresh = viewModel::refresh,
-                onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
-            )
-            Spacer(Modifier.height(20.dp))
-            if (tab == 0) {
-                StoreScreen(
-                    state = state,
-                    onInstall = viewModel::install,
-                    onOpenInstallPermission = viewModel::openInstallPermission,
+            if (dialogVisible) {
+                StoreUpdateDialog(
+                    state = state.update,
+                    onDownload = viewModel::downloadUpdate,
+                    onDismiss = viewModel::dismissUpdate,
                 )
-            } else {
-                FileShareScreen(
-                    state = state,
-                    onToggleServer = viewModel::toggleServer,
-                    onOpenAllFiles = viewModel::openAllFilesAccess,
-                    onOpenInstallPermission = viewModel::openInstallPermission,
-                    onRecheck = viewModel::refreshPermissions,
+                return@Box
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 48.dp, vertical = 24.dp),
+            ) {
+                Header(
+                    tab = tab,
+                    onTab = { tab = it },
+                    loading = state.loading,
+                    checkingUpdate = state.update.checking,
+                    versionName = state.versionName,
+                    onRefresh = viewModel::refresh,
+                    onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
                 )
+                Spacer(Modifier.height(20.dp))
+                if (tab == 0) {
+                    StoreScreen(
+                        state = state,
+                        onInstall = viewModel::install,
+                        onOpenInstallPermission = viewModel::openInstallPermission,
+                    )
+                } else {
+                    FileShareScreen(
+                        state = state,
+                        onToggleServer = viewModel::toggleServer,
+                        onOpenAllFiles = viewModel::openAllFilesAccess,
+                        onOpenInstallPermission = viewModel::openInstallPermission,
+                        onRecheck = viewModel::refreshPermissions,
+                    )
+                }
             }
         }
-    }
 
+    }
 }
 
 @Composable
@@ -169,21 +174,20 @@ private fun TabChip(text: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.05f else 1f,
+        targetValue = if (focused) TvFocus.scale else 1f,
         animationSpec = tween(120),
         label = "tabScale",
     )
     val background by animateColorAsState(
         targetValue = when {
-            selected -> MaterialTheme.colorScheme.primary
-            focused -> MaterialTheme.colorScheme.surfaceContainerHighest
+            selected || focused -> MaterialTheme.colorScheme.primary
             else -> MaterialTheme.colorScheme.surfaceContainer
         },
         animationSpec = tween(120),
         label = "tabBackground",
     )
     val content by animateColorAsState(
-        targetValue = if (selected) {
+        targetValue = if (selected || focused) {
             MaterialTheme.colorScheme.onPrimary
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
@@ -197,6 +201,12 @@ private fun TabChip(text: String, selected: Boolean, onClick: () -> Unit) {
                 scaleX = scale
                 scaleY = scale
             }
+            .shadow(
+                elevation = if (focused) TvFocus.elevation else 0.dp,
+                shape = shape,
+                ambientColor = MaterialTheme.colorScheme.primary,
+                spotColor = MaterialTheme.colorScheme.primary,
+            )
             .clip(shape)
             .background(background)
             .onFocusChanged { focused = it.isFocused }

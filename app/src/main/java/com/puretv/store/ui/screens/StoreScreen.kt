@@ -59,6 +59,7 @@ import com.puretv.store.ui.FocusButton
 import com.puretv.store.ui.RowStatus
 import com.puretv.store.ui.StoreRow
 import com.puretv.store.ui.StoreUiState
+import com.puretv.store.ui.TvFocus
 import com.puretv.store.ui.theme.StorePalette
 
 @Composable
@@ -171,7 +172,7 @@ private fun AppCard(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(22.dp)
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.025f else 1f,
+        targetValue = if (focused) TvFocus.scale else 1f,
         animationSpec = tween(140),
         label = "cardScale",
     )
@@ -196,7 +197,7 @@ private fun AppCard(
                 scaleY = scale
             }
             .shadow(
-                elevation = if (focused) 18.dp else 0.dp,
+                elevation = if (focused) TvFocus.elevation else 0.dp,
                 shape = shape,
                 ambientColor = MaterialTheme.colorScheme.primary,
                 spotColor = MaterialTheme.colorScheme.primary,
@@ -213,6 +214,7 @@ private fun AppCard(
                         text = row.app.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -257,9 +259,10 @@ private fun AppCard(
                 Text(
                     text = statusText(row),
                     style = MaterialTheme.typography.bodySmall,
-                    color = when (row.status) {
-                        RowStatus.ERROR -> MaterialTheme.colorScheme.error
-                        RowStatus.UP_TO_DATE -> MaterialTheme.colorScheme.tertiary
+                    color = when {
+                        row.status == RowStatus.ERROR -> MaterialTheme.colorScheme.error
+                        row.status == RowStatus.UP_TO_DATE -> MaterialTheme.colorScheme.tertiary
+                        row.hasUpdate -> StorePalette.updateAccent
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                     maxLines = 1,
@@ -267,7 +270,7 @@ private fun AppCard(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(10.dp))
-                ActionPill(status = row.status)
+                ActionPill(status = row.status, hasUpdate = row.hasUpdate)
             }
         }
     }
@@ -306,9 +309,9 @@ private fun AppTile(app: StoreApp, icon: ImageBitmap?) {
 }
 
 @Composable
-private fun ActionPill(status: RowStatus) {
+private fun ActionPill(status: RowStatus, hasUpdate: Boolean) {
     val label = when (status) {
-        RowStatus.IDLE -> "安装"
+        RowStatus.IDLE -> if (hasUpdate) "更新" else "安装"
         RowStatus.DOWNLOADING -> "下载中"
         RowStatus.INSTALLING -> "确认安装"
         RowStatus.UP_TO_DATE -> "已安装"
@@ -316,14 +319,16 @@ private fun ActionPill(status: RowStatus) {
         RowStatus.CHECKING -> ""
     }
     if (label.isEmpty()) return
-    val background = when (status) {
-        RowStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
-        RowStatus.UP_TO_DATE -> MaterialTheme.colorScheme.surfaceVariant
+    val background = when {
+        status == RowStatus.ERROR -> MaterialTheme.colorScheme.errorContainer
+        status == RowStatus.UP_TO_DATE -> MaterialTheme.colorScheme.surfaceVariant
+        status == RowStatus.IDLE && hasUpdate -> StorePalette.updateAccent
         else -> MaterialTheme.colorScheme.primary
     }
-    val content = when (status) {
-        RowStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
-        RowStatus.UP_TO_DATE -> MaterialTheme.colorScheme.onSurfaceVariant
+    val content = when {
+        status == RowStatus.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+        status == RowStatus.UP_TO_DATE -> MaterialTheme.colorScheme.onSurfaceVariant
+        status == RowStatus.IDLE && hasUpdate -> StorePalette.onUpdateAccent
         else -> MaterialTheme.colorScheme.onPrimary
     }
     Surface(shape = RoundedCornerShape(50), color = background) {
@@ -364,6 +369,7 @@ private fun NoticeCard(
     Surface(
         shape = shape,
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(

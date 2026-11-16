@@ -166,6 +166,7 @@ private fun InfoCard(content: @Composable () -> Unit) {
     Surface(
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 22.dp, vertical = 18.dp)) {

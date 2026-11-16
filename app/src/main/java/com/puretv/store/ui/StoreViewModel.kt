@@ -50,6 +50,17 @@ data class StoreRow(
     val status: RowStatus = RowStatus.CHECKING,
     val progress: Float? = null,
     val message: String? = null,
+) {
+    val hasUpdate: Boolean
+        get() = installedVersion != null && release != null &&
+            VersionNames.isNewer(release.versionName, installedVersion)
+}
+
+/** Updateable apps first, then apps that are not installed, then the rest. */
+internal fun orderRows(rows: List<StoreRow>): List<StoreRow> = rows.sortedWith(
+    compareByDescending<StoreRow> { it.hasUpdate }
+        .thenBy { it.installedVersion != null }
+        .thenBy { it.app.name.lowercase() },
 )
 
 data class UpdateUiState(
@@ -232,7 +243,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
             val rows = coroutineScope {
                 apps.map { app -> async(Dispatchers.IO) { loadRow(app) } }.awaitAll()
             }
-            _state.update { it.copy(loading = false, rows = rows) }
+            _state.update { it.copy(loading = false, rows = orderRows(rows)) }
         }
     }
 
@@ -333,12 +344,15 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                 val installed = withContext(Dispatchers.IO) {
                     InstalledApps.versionName(getApplication(), row.app.packageName)
                 }
+                val hasUpdate = installed != null && row.release != null &&
+                    VersionNames.isNewer(row.release.versionName, installed)
                 when {
+                    row.status == RowStatus.DOWNLOADING -> row
                     installed != null -> row.copy(
                         installedVersion = installed,
-                        status = RowStatus.UP_TO_DATE,
+                        status = if (hasUpdate) RowStatus.IDLE else RowStatus.UP_TO_DATE,
                         progress = null,
-                        message = "安装完成",
+                        message = if (hasUpdate) null else "安装完成",
                     )
                     row.status == RowStatus.INSTALLING -> row.copy(
                         status = RowStatus.IDLE,
@@ -348,7 +362,7 @@ class StoreViewModel(application: Application) : AndroidViewModel(application) {
                     else -> row
                 }
             }
-            _state.update { it.copy(rows = rows) }
+            _state.update { it.copy(rows = orderRows(rows)) }
         }
     }
 

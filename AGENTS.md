@@ -118,8 +118,10 @@
   避免电视在明亮环境中整屏发白。
 - 焦点与选中状态只用放大、提亮、填充色和投影表达；不得用 `border`/细描边画焦点框，
   避免出现按钮或卡片外圈未填充的空隙。
-- 启动图标必须是 `@mipmap/ic_launcher` 自适应图标，背景铺满、前景位于 66dp 安全区内；
-  不要改回带透明边距的普通 drawable，否则电视桌面会给图标套一圈空白。
+- 启动图标必须同时提供：`mipmap-anydpi-v26` 自适应图标（背景铺满，前景 108dp 画布、
+  内容位于中央 66dp 安全区）、`mipmap-anydpi-v33` 带 `monochrome` 的主题图标，以及
+  `mipmap-{m,h,xh,xxh,xxxh}dpi` 的方形/圆形 PNG 回退（Android 8.0 以下没有 anydpi-v26，
+  缺失时系统会显示默认图标或留出未填充区域）。不要只保留 `anydpi-v26`。
 - 不新增遥测、崩溃上报、广告 SDK；联网仅限清单、GitHub Release、APK 下载。
 - 网络请求只在 `Dispatchers.IO`；下载进度节流，避免高频更新 UI。
 - 只保留一个前台服务；停止服务时关闭 NanoHTTPD 并更新 `ServerState`。

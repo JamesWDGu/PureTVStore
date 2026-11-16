@@ -122,6 +122,9 @@
   内容位于中央 66dp 安全区）、`mipmap-anydpi-v33` 带 `monochrome` 的主题图标，以及
   `mipmap-{m,h,xh,xxh,xxxh}dpi` 的方形/圆形 PNG 回退（Android 8.0 以下没有 anydpi-v26，
   缺失时系统会显示默认图标或留出未填充区域）。不要只保留 `anydpi-v26`。
+  回退 PNG 必须与自适应图标同一设计（深色背景铺满、浅色前景），不得渲染成白底；生成后要检查
+  主色占比与圆形图标的透明边。电视横幅必须是 320×180 位图 `drawable-xhdpi/tv_banner.png`，
+  不要用 VectorDrawable，部分电视启动器不会加载。
 - 不新增遥测、崩溃上报、广告 SDK；联网仅限清单、GitHub Release、APK 下载。
 - 网络请求只在 `Dispatchers.IO`；下载进度节流，避免高频更新 UI。
 - 只保留一个前台服务；停止服务时关闭 NanoHTTPD 并更新 `ServerState`。

@@ -29,7 +29,7 @@ object AppIconLoader {
     ): ImageBitmap? = withContext(Dispatchers.IO) {
         val installedIcon = if (installed) installedIcon(context, app.packageName) else null
         val bitmap = installedIcon ?: app.iconUrl?.let { loadRemote(context, it) }
-        bitmap?.asImageBitmap()
+        bitmap?.let(::trimTransparent)?.asImageBitmap()
     }
 
     private fun installedIcon(context: Context, packageName: String): Bitmap? = runCatching {
@@ -38,6 +38,40 @@ object AppIconLoader {
             .toBitmap(width = 144, height = 144)
             .let { if (it.width > 144) Bitmap.createScaledBitmap(it, 144, 144, true) else it }
     }.getOrNull()
+
+    /**
+     * Removes transparent padding around the artwork so the icon fills its tile.
+     * Icons that already reach the edges are returned unchanged.
+     */
+    private fun trimTransparent(source: Bitmap): Bitmap {
+        val width = source.width
+        val height = source.height
+        if (width <= 0 || height <= 0) return source
+        val pixels = IntArray(width * height)
+        source.getPixels(pixels, 0, width, 0, 0, width, height)
+        var left = width
+        var top = height
+        var right = -1
+        var bottom = -1
+        for (y in 0 until height) {
+            val row = y * width
+            for (x in 0 until width) {
+                if (pixels[row + x] ushr 24 != 0) {
+                    if (x < left) left = x
+                    if (x > right) right = x
+                    if (y < top) top = y
+                    if (y > bottom) bottom = y
+                }
+            }
+        }
+        if (right < left || bottom < top) return source
+        val trimmedWidth = right - left + 1
+        val trimmedHeight = bottom - top + 1
+        if (trimmedWidth >= width * 0.99f && trimmedHeight >= height * 0.99f) return source
+        return runCatching {
+            Bitmap.createBitmap(source, left, top, trimmedWidth, trimmedHeight)
+        }.getOrDefault(source)
+    }
 
     private fun loadRemote(context: Context, url: String): Bitmap? {
         memory.get(url)?.let { return it }
